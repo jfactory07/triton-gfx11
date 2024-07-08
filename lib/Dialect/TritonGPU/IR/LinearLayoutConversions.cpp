@@ -459,19 +459,33 @@ LinearLayout wmmaToLinearLayout(ArrayRef<int64_t> shape,
   // vector is a tuple of values mapping to matrix C's (N, M[, B]) indices.
   SmallVector<unsigned> order = triton::gpu::getOrder(wmma);
 
-  // For wmma with 16x16 output, each of the 32 threads holds 8 elements.
-  //
-  // For the register (i.e., element) dimension, these 8 elements are along
-  // the matrix C's M dimension, with 1 consecutive elements spanning 1 row
-  // and then the next 1 row being a gap.
-  //
-  // For the lane (i.e., thread) dimension, these threads are along the
-  // matrix C's N dimension, with 16 consecutive threads covering a whole
-  // row and the next 16 threads start at the next row.
-  LinearLayout tileLayout(
-      {{kRegister, {/*gap*/ {0, 2}, {0, 4}, {0, 8}}},
-       {kLane, {{1, 0}, {2, 0}, {4, 0}, {8, 0}, /*gap*/ {0, 1}}}},
-      {outDimNames[order[0]], outDimNames[order[1]]});
+  auto initLinearLayout = [&](int version) {
+    // For wmma with 16x16 output, each of the 32 threads holds 8 elements.
+    //
+    // For the register (i.e., element) dimension, these 8 elements are
+    // along the matrix C's M dimension, with 1 consecutive elements
+    // spanning 1 row and then the next 1 row being a gap.
+    //
+    // For the lane (i.e., thread) dimension, these threads are along the
+    // matrix C's N dimension, with 16 consecutive threads covering a whole
+    // row and the next 16 threads start at the next row.
+    switch (version) {
+    case 1:
+      return LinearLayout(
+          {{kRegister, {/*gap*/ {0, 2}, {0, 4}, {0, 8}}},
+           {kLane, {{1, 0}, {2, 0}, {4, 0}, {8, 0}, /*gap*/ {0, 1}}}},
+          {outDimNames[order[0]], outDimNames[order[1]]});
+    case 2:
+      return LinearLayout(
+          {{kRegister, {/*gap*/ {0, 1}, {0, 2}, {0, 4}}},
+           {kLane, {{1, 0}, {2, 0}, {4, 0}, {8, 0}, /*gap*/ {0, 8}}}},
+          {outDimNames[order[0]], outDimNames[order[1]]});
+    default:
+      llvm::report_fatal_error("Unsupported wmma version for linear layout");
+    }
+  };
+
+  LinearLayout tileLayout(initLinearLayout(wmma.getVersion()));
 
   if (hasBatchDim) {
     assert(order[2] == 0);
