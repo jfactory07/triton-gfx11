@@ -166,7 +166,7 @@ LogicalResult convertDot(DotOp op, DotOpAdaptor adaptor,
   // TODO: support 2nd gen of WMMA
   assert(wmmaLayout.getVersion() == 1);
   auto warpsPerCTA = wmmaLayout.getWarpsPerCTA();
-  auto mnkDim = AMDWmmaEncodingAttr::getMNKDimPerWMMAInstr();
+  auto mnkDim = SmallVector<unsigned>{16, 16, 16};
 
   auto loc = op.getLoc();
   Value a = op.getA();
